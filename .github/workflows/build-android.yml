@@ -1,45 +1,54 @@
-# 工作流的名称，会显示在 Actions 列表中
+# 工作流的名称
 name: Build Android APK
 
-# 触发工作流的事件
+# 允许我们手动在 Actions 页面点击按钮来触发
 on:
-  # 允许我们手动在 Actions 页面点击按钮来触发
   workflow_dispatch:
 
 jobs:
-  build:
-    # 指定任务运行在 GitHub 的哪种虚拟服务器上
+  build-android:
+    # 任务运行在 GitHub 的虚拟服务器上
     runs-on: ubuntu-latest
-
     steps:
-      # 第 1 步：获取您仓库的源代码
-      - name: Checkout Code
+      # 步骤 1: 获取主项目的源代码
+      - name: Checkout main repository
         uses: actions/checkout@v3
 
-      # 第 2 步：安装 Java 开发环境 (Android 编译需要)
-      - name: Set up JDK 12
+      # 步骤 2: 获取并放置 API 仓库（关键步骤！）
+      - name: Checkout bujuan_music_api repository
+        uses: actions/checkout@v3
+        with:
+          repository: 2697a/bujuan_music_api
+          path: bujuan_music_api
+          
+      # 步骤 3: 设置 Java 环境
+      - name: Setup Java
         uses: actions/setup-java@v3
         with:
-          distribution: 'zulu'
-          java-version: "12.x"
+          distribution: 'temurin'
+          java-version: '17'
 
-      # 第 3 步：安装 Flutter 环境
-      - name: Set up Flutter
+      # 步骤 4: 设置 Rust 环境（关键步骤！）
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # 步骤 5: 设置 Flutter 环境
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable' # 使用稳定版的 Flutter
+          channel: 'stable'
 
-      # 第 4 步：获取项目的所有依赖包
-      - name: Get Flutter dependencies
+      # 步骤 6: 获取 Flutter 项目的依赖
+      - name: Get dependencies
         run: flutter pub get
 
-      # 第 5 步：执行编译 APK 的命令
+      # 步骤 7: 编译 APK
       - name: Build APK
         run: flutter build apk --release
 
-      # 第 6 步：将编译好的 APK 文件打包上传，方便我们下载
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v3
+      # 步骤 8: 上传编译好的 APK 文件，方便我们下载
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          name: release-apk
+          name: android-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
