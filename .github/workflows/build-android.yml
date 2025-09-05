@@ -1,54 +1,142 @@
-# 工作流的名称
-name: Build Android APK
+name: Build Android & iOS
 
-# 允许我们手动在 Actions 页面点击按钮来触发
 on:
   workflow_dispatch:
+  release:
+    types: [released]
 
 jobs:
   build-android:
-    # 任务运行在 GitHub 的虚拟服务器上
     runs-on: ubuntu-latest
     steps:
-      # 步骤 1: 获取主项目的源代码
-      - name: Checkout main repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      # 步骤 2: 获取并放置 API 仓库（关键步骤！）
-      - name: Checkout bujuan_music_api repository
+      - name: Checkout bujuan_music_api
         uses: actions/checkout@v3
         with:
           repository: 2697a/bujuan_music_api
           path: bujuan_music_api
           
-      # 步骤 3: 设置 Java 环境
       - name: Setup Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # 步骤 4: 设置 Rust 环境（关键步骤！）
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # 步骤 5: 设置 Flutter 环境
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.x'
           channel: 'stable'
 
-      # 步骤 6: 获取 Flutter 项目的依赖
       - name: Get dependencies
         run: flutter pub get
 
-      # 步骤 7: 编译 APK
       - name: Build APK
         run: flutter build apk --release
 
-      # 步骤 8: 上传编译好的 APK 文件，方便我们下载
+      - name: Print Folder Tree
+        uses: jaywcjlove/github-action-folder-tree@main
+        with:
+            exclude: "node_modules|dist|.git|.husky"
+            path: ./build
+            depth: 10
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: android-release-apk
+          name: android-release
           path: build/app/outputs/flutter-apk/app-release.apk
+
+#  build-ios:
+#    runs-on: macos-latest
+#    steps:
+#      - uses: actions/checkout@v3
+#
+#      
+#      - name: Checkout bujuan_music_api
+#        uses: actions/checkout@v3
+#        with:
+#          repository: 2697a/bujuan_music_api
+#          path: bujuan_music_api
+#
+#      - name: Setup Rust
+#        uses: dtolnay/rust-toolchain@stable
+#
+#      - name: Setup Flutter
+#        uses: subosito/flutter-action@v2
+#        with:
+#          flutter-version: '3.x'
+#          channel: 'stable'
+#
+#      - name: Get dependencies
+#        run: flutter pub get
+#
+#      - name: Build iOS
+#        run: flutter build ios --release --no-codesign
+#
+#      - name: Print Folder Tree
+#        uses: jaywcjlove/github-action-folder-tree@main
+#        with:
+#            exclude: "node_modules|dist|.git|.husky"
+#            path: ./build
+#            depth: 10
+#
+#      - name: Pack IPA
+#        run: |
+#          cd build/ios/iphoneos
+#          mkdir Payload
+#          cp -r Runner.app Payload
+#          zip -r app.ipa Payload
+#          
+#      - name: Upload IPA
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: ios-release
+#          path: build/ios/iphoneos/app.ipa 
+#
+  release:
+    name: Release
+    needs: [build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag the repository (pre-release)
+        if: github.event_name != 'release' || github.event.action != 'created'
+        id: tag
+        run: |
+          TAG=nightly.$(date -Iseconds | sed 's/[T:\+]/-/g')
+          TIME=$(date '+%Y/%m/%d %H:%M')
+          echo "$TAG"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "time=$TIME" >> $GITHUB_OUTPUT
+          git config --global user.name "${GITHUB_ACTOR}"
+          git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git tag -a $TAG -m "Published version $TAG" ${GITHUB_SHA}
+          git push origin $TAG
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release (pre-release)
+        uses: softprops/action-gh-release@v2
+        if: github.event_name != 'release' || github.event.action != 'created'
+        with:
+          files: artifacts/*/*
+          prerelease: true
+          make_latest: false
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.time }}
+
+      - name: Create release (release)
+        uses: softprops/action-gh-release@v2
+        if: github.event_name == 'release' && github.event.action == 'created'
+        with:
+          files: artifacts/*/*
+          prerelease: false
+          make_latest: true
